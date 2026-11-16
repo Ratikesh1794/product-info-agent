@@ -1,3 +1,4 @@
+import { Link } from 'react-router'
 import type { SessionSummary } from '../types/chat'
 
 const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
@@ -14,25 +15,24 @@ interface Props {
   sessions: SessionSummary[]
   activeId: string
   error: string | null
-  onNew: () => void
-  onOpen: (id: string) => void
+  onNavigate: () => void
   onDelete: (id: string) => void
 }
 
-export function Sidebar({ sessions, activeId, error, onNew, onOpen, onDelete }: Props) {
+export function Sidebar({ sessions, activeId, error, onNavigate, onDelete }: Props) {
   return (
     <nav aria-label="Conversations" className="flex h-full flex-col">
       <div className="p-3">
-        <button
-          type="button"
-          onClick={onNew}
+        <Link
+          to="/"
+          onClick={onNavigate}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 py-2 font-medium text-white hover:bg-brand-strong"
         >
           <svg aria-hidden viewBox="0 0 16 16" className="size-4">
             <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.8" />
           </svg>
           New conversation
-        </button>
+        </Link>
       </div>
 
       <h2 className="px-4 pt-2 pb-1 text-xs font-medium text-muted">History</h2>
@@ -46,15 +46,15 @@ export function Sidebar({ sessions, activeId, error, onNew, onOpen, onDelete }: 
             const active = s.id === activeId
             return (
               <li key={s.id} className="group relative">
-                <button
-                  type="button"
-                  onClick={() => onOpen(s.id)}
+                <Link
+                  to={`/c/${s.id}`}
+                  onClick={onNavigate}
                   aria-current={active ? 'page' : undefined}
-                  className={`w-full rounded-lg py-2 pr-9 pl-3 text-left ${active ? 'bg-surface shadow-[0_0_0_1px_var(--color-line)]' : 'hover:bg-surface/60'}`}
+                  className={`block w-full rounded-lg py-2 pr-9 pl-3 ${active ? 'bg-surface shadow-[0_0_0_1px_var(--color-line)]' : 'hover:bg-surface/60'}`}
                 >
                   <span className="block truncate text-sm">{s.title}</span>
                   <span className="block text-xs text-muted">{ago(s.updated_at)}</span>
-                </button>
+                </Link>
                 <button
                   type="button"
                   onClick={() => onDelete(s.id)}

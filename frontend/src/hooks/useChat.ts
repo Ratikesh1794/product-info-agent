@@ -1,12 +1,16 @@
 import { useCallback, useRef, useState } from 'react'
-import { getSession, streamChat } from '../api/chat'
+import { getSession, NotFoundError, streamChat } from '../api/chat'
 import type { AgentEvent, Message } from '../types/chat'
 
 const newId = (): string => crypto.randomUUID()
 
-/** One active conversation. `onSaved` fires after a turn completes (the backend has persisted it). */
+/**
+ * One active conversation, driven by the URL: call `syncTo(routeId)` whenever the route changes.
+ * `onSaved` fires after a turn completes (the backend has persisted it).
+ */
 export function useChat(onSaved: () => void) {
   const [sessionId, setSessionId] = useState(newId)
+  const current = useRef(sessionId) // read synchronously by syncTo and late responses
   const [messages, setMessages] = useState<Message[]>([])
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -33,6 +37,28 @@ export function useChat(onSaved: () => void) {
         return patch(id, (m) => ({ ...m, error: ev.message }))
     }
   }
+
+  /** Show the conversation the URL points at; no id means a fresh one. */
+  const syncTo = useCallback(async (routeId?: string) => {
+    if (routeId && routeId === current.current) return // already showing it (e.g. URL just caught up after first send)
+    abort.current?.abort()
+    const id = routeId ?? newId()
+    current.current = id
+    setSessionId(id)
+    setMessages([])
+    setLoadError(null)
+    if (!routeId) return
+    setLoading(true)
+    try {
+      const data = await getSession(id)
+      if (current.current === id) setMessages(data.messages)
+    } catch (e) {
+      if (current.current === id)
+        setLoadError(e instanceof NotFoundError ? 'This conversation doesn’t exist or was deleted.' : 'This conversation couldn’t be loaded.')
+    } finally {
+      if (current.current === id) setLoading(false)
+    }
+  }, [])
 
   const send = useCallback(
     async (text: string) => {
@@ -66,27 +92,5 @@ export function useChat(onSaved: () => void) {
 
   const stop = useCallback(() => abort.current?.abort(), [])
 
-  const newChat = useCallback(() => {
-    abort.current?.abort()
-    setSessionId(newId())
-    setMessages([])
-    setLoadError(null)
-  }, [])
-
-  const open = useCallback(async (id: string) => {
-    abort.current?.abort()
-    setSessionId(id)
-    setMessages([])
-    setLoadError(null)
-    setLoading(true)
-    try {
-      setMessages((await getSession(id)).messages)
-    } catch {
-      setLoadError('This conversation couldn’t be loaded.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  return { sessionId, messages, busy, loading, loadError, send, stop, newChat, open }
+  return { sessionId, messages, busy, loading, loadError, send, stop, syncTo }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router'
 import { ChatMessage } from './components/ChatMessage'
 import { Composer } from './components/Composer'
 import { EmptyState } from './components/EmptyState'
@@ -7,12 +8,24 @@ import { useChat } from './hooks/useChat'
 import { useSessions } from './hooks/useSessions'
 
 export default function App() {
+  const { sessionId: routeId } = useParams()
+  const navigate = useNavigate()
   const history = useSessions()
   const chat = useChat(history.refresh)
+  const { syncTo } = chat
   const [menu, setMenu] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
 
   const title = history.sessions.find((s) => s.id === chat.sessionId)?.title ?? 'New conversation'
+
+  // the URL is the source of truth for which conversation is open
+  useEffect(() => {
+    void syncTo(routeId)
+  }, [routeId, syncTo])
+
+  useEffect(() => {
+    document.title = `${title} · Product assistant`
+  }, [title])
 
   // follow the stream, unless the visitor has scrolled up to read
   useEffect(() => {
@@ -20,9 +33,10 @@ export default function App() {
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 200) el.scrollTop = el.scrollHeight
   }, [chat.messages])
 
-  const close = (fn: () => void) => () => {
-    fn()
-    setMenu(false)
+  const ask = (q: string) => {
+    // first message of a new conversation: give it its URL (replace, so Back doesn't return to an empty draft)
+    if (!routeId) navigate(`/c/${chat.sessionId}`, { replace: true })
+    void chat.send(q)
   }
 
   const sidebar = (
@@ -30,11 +44,10 @@ export default function App() {
       sessions={history.sessions}
       activeId={chat.sessionId}
       error={history.error}
-      onNew={close(chat.newChat)}
-      onOpen={(id) => close(() => void chat.open(id))()}
+      onNavigate={() => setMenu(false)}
       onDelete={(id) => {
         void history.remove(id)
-        if (id === chat.sessionId) chat.newChat()
+        if (id === chat.sessionId) navigate('/')
       }}
     />
   )
@@ -70,9 +83,14 @@ export default function App() {
           {chat.loading ? (
             <p className="mx-auto max-w-3xl py-10 text-muted">Loading conversation…</p>
           ) : chat.loadError ? (
-            <p role="alert" className="mx-auto max-w-3xl py-10 text-stop">{chat.loadError}</p>
+            <div role="alert" className="mx-auto max-w-3xl py-10">
+              <p>{chat.loadError}</p>
+              <Link to="/" className="mt-2 inline-block font-medium text-brand hover:text-brand-strong">
+                Start a new conversation
+              </Link>
+            </div>
           ) : chat.messages.length === 0 ? (
-            <EmptyState seed={chat.sessionId} onPick={(q) => void chat.send(q)} />
+            <EmptyState seed={chat.sessionId} onPick={ask} />
           ) : (
             <div role="log" aria-label="Conversation" className="mx-auto max-w-3xl space-y-8 py-8">
               {chat.messages.map((m) => (
@@ -84,7 +102,7 @@ export default function App() {
 
         <div className="px-4 pb-4 sm:px-6">
           <div className="mx-auto max-w-3xl">
-            <Composer busy={chat.busy} disabled={chat.loading} onSend={(q) => void chat.send(q)} onStop={chat.stop} />
+            <Composer busy={chat.busy} disabled={chat.loading || !!chat.loadError} onSend={ask} onStop={chat.stop} />
             <p className="mt-2 text-center text-xs text-muted">
               Prices are MSRP. Stock isn’t tracked, so check with the retailer before you go.
             </p>

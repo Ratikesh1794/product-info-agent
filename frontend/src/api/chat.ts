@@ -60,8 +60,13 @@ export async function streamChat(
 
 export const listSessions = () => fetch(`${API}/sessions`, { headers: headers() }).then(json<SessionSummary[]>)
 
+export class NotFoundError extends Error {}
+
 export const getSession = (id: string) =>
-  fetch(`${API}/sessions/${id}`, { headers: headers() }).then(json<SessionSummary & { messages: Message[] }>)
+  fetch(`${API}/sessions/${id}`, { headers: headers() }).then((res) => {
+    if (res.status === 404) throw new NotFoundError()
+    return json<SessionSummary & { messages: Message[] }>(res)
+  })
 
 export const deleteSession = (id: string) =>
   fetch(`${API}/sessions/${id}`, { method: 'DELETE', headers: headers() }).then((r) => {
