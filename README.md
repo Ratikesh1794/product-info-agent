@@ -22,5 +22,5 @@ The API applies Alembic migrations on startup; `uv run alembic upgrade head` doe
 ## Frontend (React + TS, Vite)
 
 ```
-cd frontend && npm run dev
+cd frontend && pnpm install && pnpm dev
 ```

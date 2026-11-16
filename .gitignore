@@ -1,3 +1,37 @@
+# Secrets and local env (each app ships a .env.example)
+.env
+.env.*
+!.env.example
+
+# OS / editors
 .DS_Store
+Thumbs.db
 .idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Python (backend)
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node (frontend) — pnpm only, so other managers' lockfiles never sneak in
+node_modules/
+dist/
+dist-ssr/
+*.local
+package-lock.json
+yarn.lock
+
+# Logs
+*.log
+logs/
+
+# Tooling output
 .playwright-mcp/
