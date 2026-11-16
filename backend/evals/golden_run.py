@@ -2,6 +2,7 @@
 
   uv run python -m evals.golden_run                 # all cases, writes ../docs/golden_report.md
   uv run python -m evals.golden_run --only wrench   # cases whose id starts with a prefix
+  uv run python -m evals.golden_run --no-judge      # skip the LLM-as-judge pass (deterministic checks only)
 
 Per case:  pass/fail, precision (mentioned products that are correct or acceptable context),
            recall (must_include found), forbidden products mentioned, invented model numbers.
@@ -17,7 +18,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from app.core.config import settings
 from app.services.agent import Session, run_turn
+from evals.judge import DIMENSIONS, calibrate, judge
 
 HERE = Path(__file__).resolve().parent
 GOLDEN = HERE / "golden.jsonl"
@@ -99,7 +102,7 @@ def pct(x):
     return "n/a" if x is None else f"{x:.0%}"
 
 
-def report(results: list[dict]) -> str:
+def report(results: list[dict], calib: list[dict]) -> str:
     cats: dict[str, list] = {}
     for r in results:
         cats.setdefault(r["case"]["category"], []).append(r)
@@ -124,8 +127,32 @@ def report(results: list[dict]) -> str:
     ]
     for cat, rs in cats.items():
         lines.append(f"| {cat} | {sum(r['passed'] for r in rs)}/{len(rs)} | {pct(mean(r['precision'] for r in rs))} | {pct(mean(r['recall'] for r in rs))} |")
+    judged = [r for r in results if r.get("judge")]
+    if judged:
+        lines += ["", "## LLM-as-judge", "",
+                  f"Judge model `{settings.judge_model}`, temperature 0, graded against catalog records from the CSV.", ""]
+        if calib:
+            ok = all(c["ok"] for c in calib)
+            lines += [f"Calibration: **{sum(c['ok'] for c in calib)}/{len(calib)}** known-verdict probes graded correctly"
+                      + ("" if ok else " ⚠️ judge missed a planted error, so treat its scores with caution"), "",
+                      "| Probe | Expected | Judge |", "|---|---|---|",
+                      *[f"| {c['probe']} | {c['expected']} | {c['got']} |" for c in calib], ""]
+        lines += [f"Judge verdict pass: **{sum(r['judge']['verdict'] == 'pass' for r in judged)}/{len(judged)}**", "",
+                  "| Dimension | Mean (1-5) |", "|---|---|",
+                  *[f"| {d} | {mean(r['judge']['scores'][d]['score'] for r in judged):.2f} |" for d in DIMENSIONS]]
+        disagree = [r for r in judged if (r["judge"]["verdict"] == "pass") != r["passed"]]
+        lines += ["", "### Where the checks and the judge disagree", "" if disagree else "None."]
+        for r in disagree:
+            c = r["case"]
+            lines += [f"- **{c['id']}**: checks {'pass' if r['passed'] else 'fail'}, judge {r['judge']['verdict']}: "
+                      + "; ".join(r["judge"]["issues"] or [r["judge"]["scores"][d]["reason"] for d in ("correctness",)])]
+        low = [r for r in judged if any(r["judge"]["scores"][d]["score"] <= 3 for d in DIMENSIONS)]
+        lines += ["", "### Low scores (any dimension ≤ 3)", "" if low else "None."]
+        for r in low:
+            bad = {d: r["judge"]["scores"][d] for d in DIMENSIONS if r["judge"]["scores"][d]["score"] <= 3}
+            lines += [f"- **{r['case']['id']}**: " + "; ".join(f"{d} {v['score']}: {v['reason']}" for d, v in bad.items())]
     fails = [r for r in results if not r["passed"]]
-    lines += ["", "## Failures", "" if fails else "None."]
+    lines += ["", "## Failures (deterministic checks)", "" if fails else "None."]
     for r in fails:
         c = r["case"]
         lines += [f"### {c['id']}: {c['question']}", f"- Expected: {c['source']}", *[f"- {f}" for f in r["failures"]],
@@ -136,24 +163,36 @@ def report(results: list[dict]) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", nargs="*", help="case id prefixes")
+    ap.add_argument("--no-judge", action="store_true", help="skip the LLM-as-judge pass")
     args = ap.parse_args()
     cases = [json.loads(line) for line in GOLDEN.open()]
+    all_cases = {c["id"]: c for c in cases}
     if args.only:
         cases = [c for c in cases if any(c["id"].startswith(p) for p in args.only)]
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(score, cases))
+        calib = []
+        if not args.no_judge:
+            calib = calibrate(all_cases)
+            for r, g in zip(results, pool.map(lambda r: judge(r["case"], r["reply"]), results), strict=True):
+                r["judge"] = g
 
     for r in results:
         c = r["case"]
-        print(f"{'PASS' if r['passed'] else 'FAIL'} {c['id']:22} prec={pct(r['precision']):>4} rec={pct(r['recall']):>4}  {'; '.join(r['failures'])}")
+        jv = f" judge={r['judge']['verdict']}" if r.get("judge") else ""
+        print(f"{'PASS' if r['passed'] else 'FAIL'} {c['id']:22} prec={pct(r['precision']):>4} rec={pct(r['recall']):>4}{jv}  {'; '.join(r['failures'])}")
     if not args.only:
-        REPORT.write_text(report(results))
+        REPORT.write_text(report(results, calib))
         print(f"\nwrote {REPORT}")
     passed = sum(r["passed"] for r in results)
     print(f"\n{passed}/{len(results)} passed · precision {pct(mean(r['precision'] for r in results))} · "
           f"recall {pct(mean(r['recall'] for r in results))} · forbidden {sum(len(r['forbidden']) for r in results)} · "
           f"invented {sum(len(r['invented']) for r in results)}")
+    if calib:
+        print(f"judge calibration {sum(c['ok'] for c in calib)}/{len(calib)} · judge pass "
+              f"{sum(r['judge']['verdict'] == 'pass' for r in results)}/{len(results)} · "
+              + " · ".join(f"{d} {mean(r['judge']['scores'][d]['score'] for r in results):.2f}" for d in DIMENSIONS))
     return 0 if passed == len(results) else 1
 
 

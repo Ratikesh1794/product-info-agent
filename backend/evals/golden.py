@@ -16,6 +16,7 @@ Case fields
   any_text        groups of phrases; each group needs at least one phrase in the reply
   numeric_models  count digit-only model numbers (Dremel "8984") as mentions
   source          how the expectation was computed
+  facts           aggregate truths from the whole catalog (counts, sizes) for the LLM judge to check claims against
 """
 
 import csv
@@ -63,11 +64,11 @@ def referenced(models: list[str]) -> list[str]:
 
 
 def case(id, category, question, expect="answer", must=(), acceptable=(), min_acceptable=0, context_ok=(),
-         forbidden=(), any_text=(), numeric_models=False, source=""):
+         forbidden=(), any_text=(), numeric_models=False, source="", facts=()):
     return {"id": id, "category": category, "question": question, "expect": expect, "must_include": list(must),
             "acceptable": list(dict.fromkeys([*must, *acceptable])), "min_acceptable": min_acceptable,
             "context_ok": list(dict.fromkeys([*context_ok, *referenced(must)])), "forbidden": list(forbidden), "any_text": [list(g) for g in any_text],
-            "numeric_models": numeric_models, "source": source}
+            "numeric_models": numeric_models, "source": source, "facts": list(facts)}
 
 
 cases: list[dict] = []
@@ -118,7 +119,10 @@ for i, (t, p) in enumerate([(500, 300), (300, 200), (1000, 400)]):
     weak = [r for r in wrenches if r["specs"]["max_fastening_torque_ft_lbs"] < t and r["specs"]["nut_busting_torque_ft_lbs"] < t]
     cases.append(case(f"wrench-{i + 1}", "spec-search", f"I need an 18V impact wrench with at least {t} ft-lbs of torque under ${p}.",
                       expect="answer" if ok else "none", must=models(ok)[:3], acceptable=models(ok), context_ok=models(nut),
-                      forbidden=models(weak), source=f"Impact Wrench, 18V, Active, msrp<={p}, fastening>={t}; forbidden: both torques <{t}"))
+                      forbidden=models(weak), source=f"Impact Wrench, 18V, Active, msrp<={p}, fastening>={t}; forbidden: both torques <{t}",
+                      facts=[f"{len(ok)} active 18V impact wrenches at or under ${p} have max fastening torque >= {t} ft-lbs",
+                             f"{len(nut)} more qualify only on nut-busting torque",
+                             f"{sum(r['product_type'] == 'Two-in-One Impact Driver/Wrench' and r['voltage_v'] == '18' and r['status'] == ACTIVE and r['price'] <= p for r in R)} active 18V two-in-one impact driver/wrenches at or under ${p} list no torque"]))
 
 lasers = [r for r in R if r["subcategory"] == "Line Lasers"]
 for i, rng_ft in enumerate([65, 130, 165]):
@@ -129,7 +133,10 @@ for i, rng_ft in enumerate([65, 130, 165]):
     red = [r for r in lasers if r["specs"].get("beam_color") == "Red" and r["status"] == ACTIVE]
     cases.append(case(f"laser-{i + 1}", "spec-search", f"Do you have a green-beam line laser with at least {rng_ft} ft range?",
                       acceptable=models(ok), min_acceptable=min(3, len(ok)), context_ok=models(rx), forbidden=models(short + red),
-                      source=f"Line Lasers, Green, Active, working_range_ft>={rng_ft}; forbidden: shorter range or red beam"))
+                      source=f"Line Lasers, Green, Active, working_range_ft>={rng_ft}; forbidden: shorter range or red beam",
+                      facts=[f"{len(ok)} active green line lasers have working range >= {rng_ft} ft",
+                             f"{len(rx)} more active green line lasers reach {rng_ft} ft only with a receiver",
+                             f"{sum(r['specs'].get('beam_color') == 'Green' and r['status'] == 'Discontinued' and r['specs'].get('working_range_ft', 0) >= rng_ft for r in lasers)} discontinued green line lasers also have >= {rng_ft} ft"]))
 
 drills = [r for r in R if r["product_type"] == "Drill/Driver" and r["status"] == ACTIVE]
 for i, (v, p) in enumerate([("18", 150), ("12", 130)]):
@@ -138,7 +145,10 @@ for i, (v, p) in enumerate([("18", 150), ("12", 130)]):
     hammer = [r for r in R if r["product_type"] == "Hammer Drill/Driver" and r["voltage_v"] == v and r["price"] <= p]
     cases.append(case(f"drill-{i + 1}", "spec-search", f"What {v}V drill/drivers do you have under ${p}?",
                       acceptable=models(ok), min_acceptable=min(2, len(ok)), forbidden=models(other_v), context_ok=models(hammer),
-                      source=f"Drill/Driver, {v}V, Active, msrp<={p}; forbidden: other voltage"))
+                      source=f"Drill/Driver, {v}V, Active, msrp<={p}; forbidden: other voltage",
+                      facts=[f"{len(ok)} active {v}V products of type Drill/Driver cost <= ${p}",
+                             f"{sum(r['status'] == ACTIVE for r in hammer)} active {v}V Hammer Drill/Drivers also cost <= ${p}",
+                             f"{sum(r['product_type'] == 'Impact Driver' and r['voltage_v'] == v and r['status'] == ACTIVE and r['price'] <= p for r in R)} active {v}V Impact Drivers cost <= ${p} (impact drivers are not drill/drivers)"]))
 
 jackets = [r for r in R if r["product_type"] == "Heated Jacket"]
 size_word = {"M": "medium", "L": "large", "2XL": "2XL", "3XL": "3XL"}
@@ -151,7 +161,9 @@ for i, (v, fit, size) in enumerate([("18", "Women's", "M"), ("12", "Men's", "3XL
     cases.append(case(f"jacket-{i + 1}", "spec-search", f"Do you have the {v}V heated jacket in a {fit.lower()} {size_word[size]}?",
                       expect="answer" if ok else "none", must=models(ok), acceptable=models(ok),
                       forbidden=models([r for r in jackets if match(r, other_fit)]) if ok else [],
-                      source=f"Heated Jacket, {v}V, fit={fit}, size={size}, Active"))
+                      source=f"Heated Jacket, {v}V, fit={fit}, size={size}, Active",
+                      facts=[f"{v}V {f} heated jackets come in sizes: {', '.join(sorted({r['specs']['size'] for r in jackets if r['voltage_v'] == v and r['specs']['fit'] == f}))}"
+                             for f in ("Men's", "Women's")]))
 
 # 5. Compatibility
 blades = [r for r in R if r["product_type"] == "Oscillating Multi-Tool Blade" and r["status"] != "Discontinued"]
@@ -164,10 +176,14 @@ for i, (tool, tier) in enumerate([("GOP18V-1300N", "StarlockPlus"), ("GOP12V-75N
     ok = [r for r in blades if fits(r, tier)]
     cases.append(case(f"compat-{i + 1}", "compatibility", f"Which oscillating blades fit my {tool}?",
                       acceptable=models(ok), min_acceptable=2, forbidden=models([r for r in blades if r not in ok]),
-                      source=f"{tool} accessory_interface={tier}; blades whose compatible_with names {tier}"))
+                      source=f"{tool} accessory_interface={tier}; blades whose compatible_with names {tier}",
+                      facts=[(f"{len(ok)} non-discontinued blades fit a {tier} tool: "
+                             f"{sum(r['status'] == ACTIVE for r in ok)} active, {sum(r['status'] != ACTIVE for r in ok)} temporarily out of stock")]))
 dremel = [r for r in R if "Dremel 4300" in r["compat"] and r["status"] != "Discontinued"]
 cases.append(case("compat-3", "compatibility", "Which accessories fit my Dremel 4300?", acceptable=models(dremel), min_acceptable=2,
-                  numeric_models=True, source="compatible_with lists 'Dremel 4300'"))
+                  numeric_models=True, source="compatible_with lists 'Dremel 4300'",
+                  facts=[(f"{len(dremel)} non-discontinued products list Dremel 4300 in compatible_with: "
+                         f"{sum(r['status'] == ACTIVE for r in dremel)} active, {sum(r['status'] != ACTIVE for r in dremel)} not active")]))
 
 # 6. Clarify: nothing names a product
 for i, q in enumerate(["Where can I buy it?", "Is this drill still available?", "How much does that one cost?"]):

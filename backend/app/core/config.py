@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1"
+    judge_model: str = "gpt-4.1"  # evals only: LLM-as-judge for the golden set
     database_url: str = "postgresql+psycopg://localhost:5432/product_agent"
     auto_migrate: bool = True  # run alembic upgrade on API startup (one-click dev)
     catalog_path: Path = BACKEND_DIR / "data" / "bosch_product_catalog_mock.csv"
