@@ -227,6 +227,7 @@ def search_products(a: SearchArgs, cat: Catalog) -> dict:
     }
     if alt := _alternative_matches(base, a, matched):
         out["also_match_on_alternative_spec"] = alt
+        out["notes"] += [f"{v['extra_count']} more match if {k} is used instead. Mention this in one line." for k, v in alt.items()]
     if len(matched) > a.limit:
         # the model only sees a page; facets describe ALL matches so it can't conclude "none exist" from page 1
         out["facets_across_all_matches"] = _facets(matched)
@@ -236,9 +237,13 @@ def search_products(a: SearchArgs, cat: Catalog) -> dict:
     return out
 
 
-def _count(a: SearchArgs, cat: Catalog) -> int:
+def _matches(a: SearchArgs, cat: Catalog) -> list[Product]:
     q = _tokens(a.query or "")
-    return len(_apply_specs([p for p in cat.products if _base_match(p, a, q)], a.spec_filters, a.include_discontinued)[0])
+    return _apply_specs([p for p in cat.products if _base_match(p, a, q)], a.spec_filters, a.include_discontinued)[0]
+
+
+def _count(a: SearchArgs, cat: Catalog) -> int:
+    return len(_matches(a, cat))
 
 
 def _diagnose_zero(a: SearchArgs, cat: Catalog) -> dict:
@@ -248,8 +253,13 @@ def _diagnose_zero(a: SearchArgs, cat: Catalog) -> dict:
         if (v := getattr(a, f)) is not None and (n := _count(a.model_copy(update={f: None}), cat)):
             out[f"without {f}={v!r}"] = n
     for i, sf in enumerate(a.spec_filters):
-        if n := _count(a.model_copy(update={"spec_filters": a.spec_filters[:i] + a.spec_filters[i + 1:]}), cat):
+        rest = a.model_copy(update={"spec_filters": a.spec_filters[:i] + a.spec_filters[i + 1:]})
+        if n := _count(rest, cat):
             out[f"without spec {sf.key} {sf.op} {sf.value!r}"] = n
+            if sf.op in ("==", "contains"):  # e.g. size "Medium" when the data says "M"
+                values = sorted({str(p.specs[sf.key]) for p in _matches(rest, cat) if sf.key in p.specs})
+                if 0 < len(values) <= 20:
+                    out[f"values of {sf.key} in those products"] = values
     return out or {"note": "no single filter is responsible; the combination genuinely has no match"}
 
 

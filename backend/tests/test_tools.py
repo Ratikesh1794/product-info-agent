@@ -138,3 +138,17 @@ def test_zero_results_explain_which_filter_excluded_everything():
     assert r["total_matches"] == 0 and r["zero_results_diagnosis"]["without compatible_with='18V'"] == 4
     genuine = search_products(SearchArgs(query="heated jacket", brand="Dremel", spec_filters=[SpecFilter(key="size", op="==", value="9XL")]), cat)
     assert "note" in genuine["zero_results_diagnosis"]
+
+
+def test_zero_results_show_real_values_of_text_specs():
+    # eval failure: size "Medium" when the catalog says "M" -> 0 hits, model retried until out of rounds
+    r = search_products(SearchArgs(query="heated jacket", voltage_v=18, spec_filters=[
+        SpecFilter(key="fit", op="==", value="Women's"), SpecFilter(key="size", op="contains", value="Medium")]), cat)
+    assert r["total_matches"] == 0
+    assert r["zero_results_diagnosis"]["values of size in those products"] == ["2XL", "L", "M", "S", "XL"]
+
+
+def test_alternative_spec_is_also_a_note():
+    r = search_products(SearchArgs(query="laser", spec_filters=[
+        SpecFilter(key="beam_color", op="==", value="Green"), SpecFilter(key="working_range_ft", op=">=", value=100)]), cat)
+    assert any("range_with_receiver_ft" in n for n in r["notes"])
