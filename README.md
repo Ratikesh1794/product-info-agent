@@ -123,6 +123,8 @@ uv run pytest -q                                # 38 tests; Postgres tests skip 
 uv run python -m evals.run                      # 17 live scenarios against the real model
 uv run python -m evals.run --repeat 3           # flakiness check: pass rate per scenario
 uv run python -m evals.run --only q2 e8         # selected scenarios
+uv run python -m evals.golden                   # rebuild the golden set (48 cases) from the CSV
+uv run python -m evals.golden_run               # score the agent on it -> docs/golden_report.md
 uv run ruff check app tests evals
 
 cd ../frontend

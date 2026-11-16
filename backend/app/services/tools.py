@@ -371,10 +371,15 @@ def find_compatible(a: CompatArgs, cat: Catalog) -> dict:
     if not (a.model_number or a.system):
         return {"error": "need model_number or system"}
     terms, notes, tool = [], [], None
+    if a.model_number and not cat.get(a.model_number):
+        # "Dremel 4300" isn't a product in the catalog, but 100+ accessories list it as a system they fit
+        if any(_mentions(t, a.model_number) for p in cat.products for t in p.compatible_with):
+            a = a.model_copy(update={"system": a.model_number, "model_number": None})
+            notes.append(f"No product with model number '{a.system}', so it was matched as a system name in compatible_with.")
+        else:
+            return _not_found(cat, a.model_number)
     if a.model_number:
         tool = cat.get(a.model_number)
-        if not tool:
-            return _not_found(cat, a.model_number)
         terms.append(tool.model_number)
         if iface := tool.specs.get("accessory_interface"):
             terms.append(iface)

@@ -152,3 +152,10 @@ def test_alternative_spec_is_also_a_note():
     r = search_products(SearchArgs(query="laser", spec_filters=[
         SpecFilter(key="beam_color", op="==", value="Green"), SpecFilter(key="working_range_ft", op=">=", value=100)]), cat)
     assert any("range_with_receiver_ft" in n for n in r["notes"])
+
+
+def test_find_compatible_falls_back_to_system_name():
+    # golden-set failure: "Dremel 4300" passed as model_number isn't a product, but accessories list it
+    r = find_compatible(CompatArgs(model_number="Dremel 4300"), cat)
+    assert r["total_matches"] > 50 and r["matched_on"] == ["Dremel 4300"] and r["notes"]
+    assert find_compatible(CompatArgs(model_number="NOPE-1234"), cat)["found"] is False
