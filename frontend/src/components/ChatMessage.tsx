@@ -15,7 +15,7 @@ const md = {
 
 const VISIBLE_CARDS = 4
 
-export function ChatMessage({ message }: { message: Message }) {
+export function ChatMessage({ message, onOpenProduct }: { message: Message; onOpenProduct: (model: string) => void }) {
   const [allCards, setAllCards] = useState(false)
 
   if (message.role === 'user') {
@@ -56,7 +56,7 @@ export function ChatMessage({ message }: { message: Message }) {
         <section aria-label="Products mentioned">
           <div className="grid gap-3 sm:grid-cols-2">
             {cards.map((p) => (
-              <ProductCard key={p.model_number} product={p} />
+              <ProductCard key={p.model_number} product={p} onOpen={onOpenProduct} />
             ))}
           </div>
           {message.products.length > VISIBLE_CARDS && (

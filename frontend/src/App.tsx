@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { ChatMessage } from './components/ChatMessage'
 import { Composer } from './components/Composer'
 import { EmptyState } from './components/EmptyState'
+import { ProductDialog } from './components/ProductDialog'
 import { Sidebar } from './components/Sidebar'
 import { useChat } from './hooks/useChat'
 import { useSessions } from './hooks/useSessions'
@@ -14,6 +15,21 @@ export default function App() {
   const chat = useChat(history.refresh)
   const { syncTo } = chat
   const [menu, setMenu] = useState(false)
+  // open product lives in the URL (?product=GSR18V-535CN): shareable, and Back closes the modal
+  const [params, setParams] = useSearchParams()
+  const product = params.get('product')
+  const location = useLocation()
+  // from a card: push (Back closes it); from inside the modal: replace (Close always closes fully)
+  // (inside the modal, keep the entry's existing marker: a shared-link arrival must still close in place)
+  const openProduct = (model: string, fromDialog = false) =>
+    setParams((p) => (p.set('product', model), p), {
+      replace: fromDialog,
+      state: fromDialog ? location.state : { productModal: true },
+    })
+  const closeProduct = () => {
+    if ((location.state as { productModal?: boolean } | null)?.productModal) navigate(-1)
+    else setParams((p) => (p.delete('product'), p), { replace: true }) // arrived via a shared link
+  }
   const scroller = useRef<HTMLDivElement>(null)
 
   const title = history.sessions.find((s) => s.id === chat.sessionId)?.title ?? 'New conversation'
@@ -94,7 +110,7 @@ export default function App() {
           ) : (
             <div role="log" aria-label="Conversation" className="mx-auto max-w-3xl space-y-8 py-8">
               {chat.messages.map((m) => (
-                <ChatMessage key={m.id} message={m} />
+                <ChatMessage key={m.id} message={m} onOpenProduct={(m) => openProduct(m)} />
               ))}
             </div>
           )}
@@ -109,6 +125,8 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {product && <ProductDialog key={product} model={product} onClose={closeProduct} onOpen={(m) => openProduct(m, true)} />}
     </div>
   )
 }

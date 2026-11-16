@@ -51,6 +51,7 @@ class Product(BaseModel):
     dimensions_in: str | None
     compatible_with: list[str]
     specs: dict
+    derived_spec_keys: list[str] = []  # unit mirrors added for search; not in the source data
     warranty: str | None
     avg_rating: float | None
     review_count: int | None
@@ -80,18 +81,23 @@ def _split(v: str) -> list[str]:
     return [p.strip() for p in v.split("|") if p.strip()]
 
 
-def _specs(raw: str) -> dict:
+def _specs(raw: str) -> tuple[dict, list[str]]:
+    """Parsed specs plus the keys this function derived (unit mirrors), so displays can show only the originals."""
     specs = json.loads(raw) if raw.strip() else {}
+    derived = []
     for key, val in list(specs.items()):
         if not isinstance(val, (int, float)) or isinstance(val, bool):
             continue
         for suffix, (other, factor) in _UNIT_MIRRORS.items():
-            if key.endswith(suffix):
-                specs.setdefault(key[: -len(suffix)] + other, round(val * factor, 1))
-    return specs
+            mirror = key[: -len(suffix)] + other
+            if key.endswith(suffix) and mirror not in specs:
+                specs[mirror] = round(val * factor, 1)
+                derived.append(mirror)
+    return specs, derived
 
 
 def _parse_row(r: dict) -> Product:
+    specs, derived = _specs(r["technical_specs"])
     return Product(
         sku=r["sku"],
         model_number=r["model_number"].strip(),
@@ -118,7 +124,8 @@ def _parse_row(r: dict) -> Product:
         weight_lbs=_num(r["weight_lbs"]),
         dimensions_in=_opt(r["dimensions_in"]),
         compatible_with=_split(r["compatible_with"]),
-        specs=_specs(r["technical_specs"]),
+        specs=specs,
+        derived_spec_keys=derived,
         warranty=_opt(r["warranty"]),
         avg_rating=_num(r["avg_rating"]),
         review_count=_num(r["review_count"], int),

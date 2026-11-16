@@ -51,7 +51,7 @@ def summary(p: Product) -> dict:
 
 def detail(p: Product) -> dict:
     # product_url is fake per the brief: never hand it to the model
-    return p.model_dump(mode="json", exclude={"product_url"})
+    return p.model_dump(mode="json", exclude={"product_url", "derived_spec_keys"})
 
 
 def _status_counts(ps: list[Product]) -> dict[str, int]:

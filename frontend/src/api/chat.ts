@@ -1,4 +1,4 @@
-import type { AgentEvent, Message, SessionSummary } from '../types/chat'
+import type { AgentEvent, Message, ProductDetail, SessionSummary } from '../types/chat'
 
 const API = import.meta.env.VITE_API_URL ?? '/api'
 const KEY = 'product-assistant.client-id'
@@ -72,3 +72,20 @@ export const deleteSession = (id: string) =>
   fetch(`${API}/sessions/${id}`, { method: 'DELETE', headers: headers() }).then((r) => {
     if (!r.ok && r.status !== 404) throw new Error(`Couldn’t delete (HTTP ${r.status}).`)
   })
+
+const productCache = new Map<string, Promise<ProductDetail>>()
+
+/** Catalog detail for the product modal. Cached per model: catalog data doesn't change while the page is open. */
+export function getProduct(model: string): Promise<ProductDetail> {
+  const key = model.toUpperCase()
+  let p = productCache.get(key)
+  if (!p) {
+    p = fetch(`${API}/products/${encodeURIComponent(model)}`).then((res) => {
+      if (res.status === 404) throw new NotFoundError()
+      return json<ProductDetail>(res)
+    })
+    p.catch(() => productCache.delete(key)) // don't cache failures
+    productCache.set(key, p)
+  }
+  return p
+}
