@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-sidebar: #eef0f3;
+  --color-line: #e1e4e9;
+  --color-line-strong: #c9ced6;
+  --color-ink: #14181f;
+  --color-muted: #5d6774;
+
+  --color-brand: #0b5cad;
+  --color-brand-strong: #084a8c;
+  --color-brand-soft: #e7eff9;
+
+  /* product status pills */
+  --color-ok: #1d7348;
+  --color-ok-soft: #e5f3eb;
+  --color-stop: #b42318;
+  --color-stop-soft: #fdecea;
+  --color-wait: #8f5400;
+  --color-wait-soft: #fff3df;
+  --color-soon: #4b43b0;
+  --color-soon-soft: #eeedfb;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas font-sans text-ink antialiased;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* one focus treatment everywhere */
+:where(button, a, summary, textarea, [tabindex]):focus-visible {
+  @apply outline-2 outline-offset-2 outline-brand;
+}

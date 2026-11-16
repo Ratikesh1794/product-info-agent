@@ -1,0 +1,88 @@
+import json
+import logging
+from collections.abc import Iterator
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.db import session as db
+from app.schemas.chat import ChatRequest, ClientId, SessionDetail, SessionOut
+from app.services import agent, history
+
+router = APIRouter()
+log = logging.getLogger(__name__)
+
+
+def _sse(ev: dict) -> str:
+    return f"event: {ev['type']}\ndata: {json.dumps(ev)}\n\n"
+
+
+@router.post("/chat")
+def chat(req: ChatRequest, client_id: ClientId) -> StreamingResponse:
+    """Streams agent events as SSE (token, tool_call, tool_result, products, error, done).
+
+    The turn is written to Postgres only once it completes, in one transaction: a failed or abandoned turn
+    leaves no half-saved history behind.
+    """
+    try:
+        with db.SessionLocal() as s:
+            prior = history.load_messages(s, req.session_id, client_id)
+    except history.NotFound:
+        raise HTTPException(404, "Conversation not found") from None
+
+    session = agent.Session(prior)
+    start = len(session.messages)
+
+    def stream() -> Iterator[str]:
+        steps: list[dict] = []
+        products: list[dict] = []
+        failed = False
+        for ev in agent.run_turn(session, req.message.strip()):
+            match ev["type"]:
+                case "tool_call":
+                    steps.append({"name": ev["name"], "args": ev["args"]})
+                case "tool_result":
+                    step = next(s for s in steps if s["name"] == ev["name"] and "ms" not in s)
+                    step.update(summary=ev["summary"], ms=ev["ms"])
+                case "products":
+                    products = ev["items"]
+                case "error":
+                    failed = True
+                case "done" if not failed:
+                    try:
+                        with db.SessionLocal() as s:
+                            history.save_turn(s, req.session_id, client_id, session.messages[start:],
+                                              {"products": products, "steps": steps})
+                    except SQLAlchemyError:
+                        log.exception("saving turn failed")
+                        yield _sse({"type": "error", "message": "This answer couldn’t be saved to your history."})
+            yield _sse(ev)
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.get("/sessions", response_model=list[SessionOut])
+def list_sessions(client_id: ClientId):
+    with db.SessionLocal() as s:
+        return history.list_sessions(s, client_id)
+
+
+@router.get("/sessions/{session_id}", response_model=SessionDetail)
+def get_session(session_id: str, client_id: ClientId):
+    with db.SessionLocal() as s:
+        try:
+            sess, msgs = history.ui_messages(s, session_id, client_id)
+        except history.NotFound:
+            raise HTTPException(404, "Conversation not found") from None
+        return SessionDetail(id=sess.id, title=sess.title, updated_at=sess.updated_at, messages=msgs)
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+def delete_session(session_id: str, client_id: ClientId) -> None:
+    with db.SessionLocal() as s:
+        try:
+            history.delete_session(s, session_id, client_id)
+        except history.NotFound:
+            raise HTTPException(404, "Conversation not found") from None
