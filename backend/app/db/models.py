@@ -9,7 +9,6 @@ chats:    one row per message, in OpenAI chat format (user / assistant / tool), 
 from datetime import datetime
 
 from sqlalchemy import (
-    JSON,
     BigInteger,
     CheckConstraint,
     DateTime,
@@ -19,15 +18,9 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-# none_as_null: Python None must be SQL NULL, not a JSON 'null' value
-JsonType = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
-
-
-class Base(DeclarativeBase):
-    pass
+from app.db.base import Base, JsonType
 
 
 class ChatSession(Base):

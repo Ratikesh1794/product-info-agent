@@ -7,10 +7,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import session as db
-from app.schemas.chat import ChatRequest, ClientId, SessionDetail, SessionOut
+from app.schemas.chat import ChatRequest, ClientId
 from app.services import agent, history
 
-router = APIRouter()
+router = APIRouter(tags=["chat"])
 log = logging.getLogger(__name__)
 
 
@@ -62,27 +62,3 @@ def chat(req: ChatRequest, client_id: ClientId) -> StreamingResponse:
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-
-@router.get("/sessions", response_model=list[SessionOut])
-def list_sessions(client_id: ClientId):
-    with db.SessionLocal() as s:
-        return history.list_sessions(s, client_id)
-
-
-@router.get("/sessions/{session_id}", response_model=SessionDetail)
-def get_session(session_id: str, client_id: ClientId):
-    with db.SessionLocal() as s:
-        try:
-            sess, msgs = history.ui_messages(s, session_id, client_id)
-        except history.NotFound:
-            raise HTTPException(404, "Conversation not found") from None
-        return SessionDetail(id=sess.id, title=sess.title, updated_at=sess.updated_at, messages=msgs)
-
-
-@router.delete("/sessions/{session_id}", status_code=204)
-def delete_session(session_id: str, client_id: ClientId) -> None:
-    with db.SessionLocal() as s:
-        try:
-            history.delete_session(s, session_id, client_id)
-        except history.NotFound:
-            raise HTTPException(404, "Conversation not found") from None

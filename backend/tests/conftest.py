@@ -5,8 +5,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
 
+import app.db.models  # noqa: F401  (registers tables)
 from app.db import session as db
-from app.db.models import Base
+from app.db.base import Base
 
 TEST_DB = os.getenv("TEST_DATABASE_URL", "postgresql+psycopg://localhost:5432/product_agent_test")
 

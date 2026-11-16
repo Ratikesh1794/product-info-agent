@@ -17,8 +17,9 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
+import app.db.models  # noqa: F401  (registers tables on Base.metadata)
 from app.core.config import settings
-from app.db.models import Base
+from app.db.base import Base
 
 config.set_main_option("sqlalchemy.url", settings.database_url)
 target_metadata = Base.metadata
