@@ -54,6 +54,22 @@ def detail(p: Product) -> dict:
     return p.model_dump(mode="json", exclude={"product_url"})
 
 
+def _status_counts(ps: list[Product]) -> dict[str, int]:
+    """Across ALL matches, not just the page shown, so counts like "32 fit" can say how many aren't Active."""
+    out: dict[str, int] = {}
+    for p in ps:
+        out[p.status.value] = out.get(p.status.value, 0) + 1
+    return out
+
+
+def _status_note(counts: dict[str, int]) -> list[str]:
+    other = {k: v for k, v in counts.items() if k != Status.ACTIVE.value}
+    if not other:
+        return []
+    parts = ", ".join(f"{v} {k.lower()}" for k, v in other.items())
+    return [f"Of {sum(counts.values())} matches, {parts}. Mention this when you give the count."]
+
+
 def _not_found(cat: Catalog, model: str) -> dict:
     return {"found": False, "model": model, "did_you_mean": cat.suggest(model)}
 
@@ -201,6 +217,8 @@ def search_products(a: SearchArgs, cat: Catalog) -> dict:
     matched.sort(key=key[a.sort_by])
     out = {
         "total_matches": len(matched),
+        "status_counts": _status_counts(matched),
+        "notes": _status_note(_status_counts(matched)),
         "showing": min(len(matched), a.limit),
         "products": [summary(p) for p in matched[: a.limit]],
         "discontinued_hidden": hidden,
@@ -366,7 +384,9 @@ def find_compatible(a: CompatArgs, cat: Catalog) -> dict:
         and q <= _haystack(p)
     ]
     hits.sort(key=lambda p: p.msrp_usd)
-    return {"matched_on": terms, "total_matches": len(hits), "products": [summary(p) for p in hits[: a.limit]], "notes": notes}
+    counts = _status_counts(hits)
+    return {"matched_on": terms, "total_matches": len(hits), "status_counts": counts,
+            "products": [summary(p) for p in hits[: a.limit]], "notes": notes + _status_note(counts)}
 
 
 # ---------- describe_catalog ----------

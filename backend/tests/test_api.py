@@ -145,3 +145,19 @@ def test_meta_only_on_final_answer_is_sql_null_elsewhere(test_db, monkeypatch):
 def test_cards_for_models_named_in_answer():
     cards = agent._cards_for("Try the GDS18V-800CPB15 (1450 ft-lbs) or the GBA18V40. gba18v40 again.", seen=set())
     assert [c["model_number"] for c in cards] == ["GDS18V-800CPB15", "GBA18V40"]
+
+
+def test_reference_hint_lists_candidates_only_when_ambiguous():
+    s = agent.Session([{"role": "user", "content": "lasers?"},
+                       {"role": "assistant", "content": "Options: GLL269GC, GLL324GX and GLL81GX."}])
+    hint = agent._reference_hint(s, "Where can I buy it?")
+    assert hint and "GLL269GC, GLL324GX, GLL81GX" in hint["content"]
+    assert agent._reference_hint(s, "Where can I buy the GLL81GX?") is None  # model named
+    assert agent._reference_hint(s, "Show me green lasers") is None          # no pronoun
+    assert agent._reference_hint(s, "Is this drill still available?") is None  # typed: may point further back
+    assert agent._reference_hint(s, "How much is this one?") is not None
+    assert agent._reference_hint(s, "Is this drill available? If not, what replaced it?") is None  # 'it' = the drill
+    one = agent.Session([{"role": "assistant", "content": "The GLL269GC is $329."}])
+    assert agent._reference_hint(one, "Where can I buy it?") is None         # single candidate
+    msgs = [{"role": "system"}, {"role": "user"}]
+    assert agent._with_hint(msgs, 2, hint)[-1] is hint and len(msgs) == 2  # request-only, history untouched

@@ -46,7 +46,7 @@ def test_q2_impact_wrench_torque_and_price():
 
 def test_q3_starlockplus_blades_exclude_max_only():
     r = find_compatible(CompatArgs(system="StarlockPlus", query="blade", limit=25), cat)
-    assert r["total_matches"] > 0
+    assert r["status_counts"] == {"Active": 30, "Temporarily Out of Stock": 2}  # matches docs/GROUND_TRUTH.md
     for p in cat.products:
         if p.model_number in models(r):
             assert not any("StarlockMax oscillating tools only" in t for t in p.compatible_with)
