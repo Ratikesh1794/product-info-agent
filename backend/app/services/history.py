@@ -7,19 +7,16 @@ from app.db.models import Chat, ChatSession
 
 
 class NotFound(Exception):
-    """Missing session, or one that belongs to another client (indistinguishable on purpose)."""
+    """No conversation with that id."""
 
 
-def _owned(db: Db, session_id: str, client_id: str) -> ChatSession | None:
-    s = db.get(ChatSession, session_id)
-    if s and s.client_id != client_id:
-        raise NotFound
-    return s
+# History is shared: every conversation is visible to everyone (single-user demo, no auth).
+# client_id is still recorded on new conversations for traceability; it no longer filters anything.
 
 
-def load_messages(db: Db, session_id: str, client_id: str) -> list[dict]:
+def load_messages(db: Db, session_id: str) -> list[dict]:
     """Prior turns in OpenAI chat format (no system prompt), for replaying into the model."""
-    s = _owned(db, session_id, client_id)
+    s = db.get(ChatSession, session_id)
     if not s:
         return []
     out = []
@@ -35,7 +32,7 @@ def load_messages(db: Db, session_id: str, client_id: str) -> list[dict]:
 
 def save_turn(db: Db, session_id: str, client_id: str, messages: list[dict], meta: dict) -> None:
     """Persist one completed turn atomically. `meta` goes on the turn's final assistant message."""
-    s = _owned(db, session_id, client_id)
+    s = db.get(ChatSession, session_id)
     if not s:
         first = next(m["content"] for m in messages if m["role"] == "user")
         s = ChatSession(id=session_id, client_id=client_id, title=_title(first))
@@ -54,14 +51,14 @@ def save_turn(db: Db, session_id: str, client_id: str, messages: list[dict], met
     db.commit()
 
 
-def list_sessions(db: Db, client_id: str, limit: int = 50) -> list[ChatSession]:
-    q = select(ChatSession).where(ChatSession.client_id == client_id).order_by(ChatSession.updated_at.desc()).limit(limit)
+def list_sessions(db: Db, limit: int = 100) -> list[ChatSession]:
+    q = select(ChatSession).order_by(ChatSession.updated_at.desc()).limit(limit)
     return list(db.scalars(q))
 
 
-def ui_messages(db: Db, session_id: str, client_id: str) -> tuple[ChatSession, list[dict]]:
+def ui_messages(db: Db, session_id: str) -> tuple[ChatSession, list[dict]]:
     """History shaped for the chat UI: user messages and final answers (tool plumbing folded into meta)."""
-    s = _owned(db, session_id, client_id)
+    s = db.get(ChatSession, session_id)
     if not s:
         raise NotFound
     msgs = []
@@ -75,8 +72,8 @@ def ui_messages(db: Db, session_id: str, client_id: str) -> tuple[ChatSession, l
     return s, msgs
 
 
-def delete_session(db: Db, session_id: str, client_id: str) -> None:
-    if s := _owned(db, session_id, client_id):
+def delete_session(db: Db, session_id: str) -> None:
+    if s := db.get(ChatSession, session_id):
         db.delete(s)
         db.commit()
 

@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 
 Id = Annotated[str, Field(min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
 
-# Anonymous browser id (no auth in this demo): scopes which conversations a visitor can list/read/delete.
-ClientId = Annotated[str, Header(alias="X-Client-Id", min_length=8, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
+# Optional anonymous browser id, recorded on new conversations for traceability. It does not filter history.
+ClientId = Annotated[str, Header(alias="X-Client-Id", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")]
 
 
 class ChatRequest(BaseModel):

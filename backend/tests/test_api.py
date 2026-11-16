@@ -97,20 +97,21 @@ def test_sessions_list_detail_delete(test_db, monkeypatch):
         assert {c.session_id for c in s.scalars(select(Chat))} == {"session-0002"}
 
 
-def test_other_clients_cannot_see_or_touch_a_session(test_db, monkeypatch):
+def test_history_is_shared_across_browsers(test_db, monkeypatch):
     monkeypatch.setattr(agent, "run_turn", fake_turn("x"))
     post("mine")
-    assert client.get("/api/sessions", headers=OTHER).json() == []
-    assert client.get("/api/sessions/session-0001", headers=OTHER).status_code == 404
-    assert client.delete("/api/sessions/session-0001", headers=OTHER).status_code == 404
-    assert post("hijack", headers=OTHER).status_code == 404
+    assert [s["id"] for s in client.get("/api/sessions", headers=OTHER).json()] == ["session-0001"]
+    assert client.get("/api/sessions").status_code == 200  # no client id needed
+    assert client.get("/api/sessions/session-0001", headers=OTHER).status_code == 200
+    assert client.get("/api/sessions/missing-0001").status_code == 404
+    assert post("continue from another browser", headers=OTHER).status_code == 200
+    assert client.delete("/api/sessions/session-0001", headers=OTHER).status_code == 204
 
 
 def test_rejects_bad_input():
     assert post("hi", sid="x").status_code == 422
     assert post("").status_code == 422
     assert post("a" * 2001).status_code == 422
-    assert client.post("/api/chat", json={"session_id": "session-0001", "message": "hi"}).status_code == 422  # no client id
 
 
 def test_disconnect_mid_turn_rolls_back_history(monkeypatch):

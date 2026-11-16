@@ -25,7 +25,7 @@ When the catalog doesn't have the answer the agent says so, and when a question 
   showing the exact filters used
 - Product detail modal: specs table, features, box contents, compatibility, retailers and clickable
   replacement links, served by `GET /api/products/{model}`
-- Conversation history in Postgres with a sidebar; each browser sees only its own conversations
+- Conversation history in Postgres with a sidebar listing every saved conversation
 - URL routing: `/c/<id>` for a conversation, `?product=<model>` for an open product. Both can be shared and
   reloaded, and back/forward work
 
@@ -139,14 +139,15 @@ Use `TEST_DATABASE_URL` to point the tests at a different database.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/chat` | Send a message, stream the answer as SSE: `token`, `tool_call`, `tool_result`, `products`, `error`, `done` |
-| `GET` | `/api/sessions` | The browser's conversations, newest first |
+| `GET` | `/api/sessions` | All conversations, newest first |
 | `GET` | `/api/sessions/{id}` | One conversation with its messages, cards and lookups |
 | `DELETE` | `/api/sessions/{id}` | Delete a conversation |
 | `GET` | `/api/products/{model}` | Full product detail for the modal |
 | `GET` | `/api/health` | Liveness |
 
-Chat and session endpoints require an `X-Client-Id` header (an anonymous id the frontend keeps in
-`localStorage`). Interactive docs are at http://localhost:8000/docs.
+Conversation history is shared: every conversation is listed for everyone (single-user demo, no auth). The
+frontend's optional `X-Client-Id` header is only recorded on new conversations. Interactive docs are at
+http://localhost:8000/docs.
 
 ## Project structure
 

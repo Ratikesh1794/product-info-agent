@@ -2,7 +2,7 @@ import json
 import logging
 from collections.abc import Iterator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -19,17 +19,14 @@ def _sse(ev: dict) -> str:
 
 
 @router.post("/chat")
-def chat(req: ChatRequest, client_id: ClientId) -> StreamingResponse:
+def chat(req: ChatRequest, client_id: ClientId = "anonymous") -> StreamingResponse:
     """Streams agent events as SSE (token, tool_call, tool_result, products, error, done).
 
     The turn is written to Postgres only once it completes, in one transaction: a failed or abandoned turn
     leaves no half-saved history behind.
     """
-    try:
-        with db.SessionLocal() as s:
-            prior = history.load_messages(s, req.session_id, client_id)
-    except history.NotFound:
-        raise HTTPException(404, "Conversation not found") from None
+    with db.SessionLocal() as s:
+        prior = history.load_messages(s, req.session_id)
 
     session = agent.Session(prior)
     start = len(session.messages)
